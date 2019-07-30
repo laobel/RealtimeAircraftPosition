@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>飞行器3d监视</title>
+    <script src="https://cesiumjs.org/Cesium/Build/CesiumUnminified/Cesium.js"></script>
+    <style>
+        @import url(https://cesiumjs.org/Cesium/Build/CesiumUnminified/Widgets/widgets.css);
+
+        html, body, #cesiumContainer {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body>
+<div id="cesiumContainer"></div>
+</body>
+<script>
+    //定义一个视图对象
+    var viewer = new Cesium.Viewer('cesiumContainer', {
+        //animation: false,
+        baseLayerPicker: false,
+        fullscreenButton: false,
+        vrButton: false,
+        geocoder: false,
+        homeButton: false,
+        infoBox: false,
+        sceneModePicker: false,
+        selectionIndicator: false,
+        //timeline: false,
+        navigationHelpButton: false,
+        navigationInstructionsInitiallyVisible: false,
+        orderIndependentTranslucency: false,
+        contextOptions: {
+            webgl: {
+                alpha: true,
+            }
+        },
+        //shouldAnimate: true, // Enable animations
+    });
+
+    viewer.scene.globe.depthTestAgainstTerrain = true;
+
+    var start = Cesium.JulianDate.now().addDays;
+    start=Cesium.JulianDate.addSeconds(start, 3, new Cesium.JulianDate());
+    var stop = Cesium.JulianDate.addDays(start, 1, new Cesium.JulianDate());
+
+    //Make sure viewer is at the desired time.
+    viewer.clock.startTime = start.clone();
+    viewer.clock.stopTime = stop.clone();
+    viewer.clock.currentTime = start.clone();
+    viewer.clock.clockRange = Cesium.ClockRange.CLAMPED ; //Loop at the end
+    //viewer.clock.multiplier = 1;
+
+    viewer.camera.setView({
+        destination: Cesium.Rectangle.fromDegrees(116.5, 38.5, 118.0, 40.0),
+        orientation: {
+            heading: Cesium.Math.toRadians(90.0), // east, default value is 0.0 (north)
+            pitch: Cesium.Math.toRadians(-90),    // default value (looking down)
+            roll: 0.0                             // default value
+        }
+    });
+
+    var dataSource=new Cesium.CustomDataSource('airbornes');
+    viewer.dataSources.add(dataSource);
+
+    dataSource.entities.collectionChanged.addEventListener(function () {
+        viewer.animation.viewModel.pauseViewModel.command();
+        viewer.animation.viewModel.pauseViewModel.command();
+        if(!viewer.clockViewModel.shouldAnimate){
+            viewer.timeline.zoomTo(start, stop);
+            viewer.zoomTo(dataSource.entities);
+        }
+    });
+
+    var delay=3;//延迟次数
+    var recentAirbornes= {};//保存最近几次收到的数据，因为设置了延迟，必须要保存。
+
+    window.addEventListener("storage", function (e) {
+        try {
+            var values = JSON.parse(localStorage.getItem("datas"));
+            if(Cesium.isArray(values)){
+                for(var i=0;i<values.length;i++){
+                    var id=values[i].icao;
+                    var time = Cesium.JulianDate.now(new  Cesium.JulianDate());
+
+                    var coordinate=values[i].airborneposition||values[i].surface_position_with_ref;
+                    if(coordinate===undefined){
+                        continue;
+                    }
+
+                    var data=recentAirbornes[id];
+
+                    if(Cesium.defined(data)){
+                        data.coordinate.push({
+                            longitude:coordinate.longitude,
+                            latitude:coordinate.latitude,
+                            altitude:coordinate.altitude,
+                            time:time
+                        });
+                        if(data.len>delay){
+                            data.coordinate.shift();
+                        }
+                        data.len=data.coordinate.length;
+                    }else {
+                        data=recentAirbornes[id]={
+                            coordinate:[{
+                                longitude:coordinate.longitude,
+                                latitude:coordinate.latitude,
+                                altitude:coordinate.altitude,
+                                time:time
+                            }],
+                            len:1
+                        };
+                    }
+
+                    if(data.len<delay+1){
+                        continue;
+                    }else {
+                        var position=Cesium.Cartesian3.fromDegrees(data.coordinate[0].longitude,data.coordinate[0].latitude,data.coordinate[0].altitude);
+                        var entity=dataSource.entities.getById(id);
+                        if(Cesium.defined(entity)){
+                            entity.position.addSample(data.coordinate[0].time, position);
+                        }else {
+                            var sampledPositionProperty=new Cesium.SampledPositionProperty();
+                            sampledPositionProperty.addSample(data.coordinate[0].time, position);
+                            entity=dataSource.entities.add({
+                                id:id,
+                                availability : new Cesium.TimeIntervalCollection([new Cesium.TimeInterval({
+                                    start : start,
+                                    stop : stop
+                                })]),
+                                position : sampledPositionProperty,
+                                orientation : new Cesium.VelocityOrientationProperty(sampledPositionProperty),
+                                model : {
+                                    uri : './models/Cesium_Air.gltf',
+                                    minimumPixelSize : 64
+                                }
+                            });
+                        }
+                    }
+                }
+
+                viewer.clockViewModel.shouldAnimate=true;
+
+                //viewer.zoomTo(viewer.entities);
+            }
+        } catch (e) {
+            console.log(e)
+        }
+    });
+</script>
+</html>

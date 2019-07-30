@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>模拟后台发送数据</title>
+</head>
+<body>
+    <div style="position: absolute; top: 100px;left: 100px;">
+        <button id="start">开始</button>
+        <button id="end">结束</button>
+    </div>
+</body>
+<script>
+    var start=document.getElementById('start');
+    var end=document.getElementById('end');
+
+    //获得一个包含最小值和最大值之间的随机数。
+    function generateRandomValInGivenNum(lower, upper) {
+        var choices = upper - lower;
+        return Math.random() * choices + lower;
+    }
+
+
+
+    var xmin=116.5;
+    var xmax=118.0;
+    var ymin=38.5;
+    var ymax=40.0;
+    var zmin=0;
+    var zmax=2000;
+
+    var n=0;
+
+
+    function randomPosition(data) {
+        if(data.airborneposition===undefined){
+            return data;
+        }
+        var position=data.airborneposition;
+        var longitude=position.longitude;
+        var latitude=position.latitude;
+        var altitude=position.altitude;
+
+        if(longitude>=xmax||latitude>=ymax){
+            if(data.direction==='+'){
+                data.direction='-';
+                data.angle=generateRandomValInGivenNum(-Math.PI/4,Math.PI/4);
+            }
+        }else if(longitude<=xmin||latitude<=ymin){
+            if(data.direction==='-'){
+                data.direction='+';
+                data.angle=generateRandomValInGivenNum(-Math.PI/4,Math.PI/4);
+            }
+        }
+
+        var d=0.001;
+        if(data.direction==='+'){
+            longitude=longitude+d*Math.cos(data.angle);
+            latitude=latitude+d*Math.sin(data.angle);
+        }else {
+            longitude=longitude-d*Math.cos(data.angle);
+            latitude=latitude-d*Math.sin(data.angle);
+        }
+
+        data.airborneposition.longitude=longitude;
+        data.airborneposition.latitude=latitude;
+
+        return data;
+    }
+    
+    function createAirPlane(num) {
+        var arr=[];
+        for(var i=0;i<num;i++){
+            arr.push({
+                icao:n+i,
+                airborneposition:{
+                    longitude:generateRandomValInGivenNum(xmin,xmax),
+                    latitude:generateRandomValInGivenNum(ymin,ymax),
+                    altitude:generateRandomValInGivenNum(zmin,zmax),
+                },
+                direction:'+',
+                angle:generateRandomValInGivenNum(-Math.PI/4,Math.PI/4)
+            });
+        }
+
+        return arr;
+    }
+
+    var flag=false;
+    localStorage.setItem('datas', "");
+
+    var updateNum=0;
+    var timer;
+    start.onclick = function(ev){
+        if(!flag){
+            var num=Math.random() * 10+5;
+            var datas=[
+                {
+                    icao:1,
+                    surface_position_with_ref:{
+                        longitude:generateRandomValInGivenNum(xmin,xmax),
+                        latitude:generateRandomValInGivenNum(ymin,ymax),
+                        altitude:0
+                    }
+                },
+                {
+                    icao:2,
+                    surface_position_with_ref:{
+                        longitude:generateRandomValInGivenNum(xmin,xmax),
+                        latitude:generateRandomValInGivenNum(ymin,ymax),
+                        altitude:0
+                    }
+                },
+                {
+                    icao:3,
+                    surface_position_with_ref:{
+                        longitude:generateRandomValInGivenNum(xmin,xmax),
+                        latitude:generateRandomValInGivenNum(ymin,ymax),
+                        altitude:0
+                    }
+                },
+                {
+                    icao:4
+                }
+            ];
+            n=4;
+            datas=datas.concat(createAirPlane(num));
+            localStorage.setItem('datas', JSON.stringify(datas));
+            flag=true;
+
+            timer=setInterval(function () {
+                if(flag){
+                    var datas=JSON.parse(localStorage.getItem("datas"));
+                    n=datas.length;
+                    for(var i=0;i<n;i++){
+                        if(typeof datas[i].airborneposition!=='undefined'){
+                            datas[i]=randomPosition(datas[i])
+                        }
+                    }
+                    if(n<30&&updateNum>10){
+                        datas=datas.concat(createAirPlane(Math.ceil((30-n)/4)));
+                    }
+
+                    localStorage.setItem('datas', JSON.stringify(datas));
+                    updateNum++;
+                }
+            },300);
+        }
+    };
+    end.onclick=function (ev) {
+        if(flag){
+            clearInterval(timer);
+            flag=false;
+        }
+        localStorage.setItem('datas', '');
+    };
+
+</script>
+</html>
